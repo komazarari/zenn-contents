@@ -1,18 +1,19 @@
 ---
 title: "kustomize の commonLabels が Headless Service のセレクタに干渉してしまうのを回避する"
-emoji: "‼"
+emoji: "⚠"
 type: "tech" # tech: 技術記事 / idea: アイデア
 topics: ["Kubernetes"]
-published: false
+published: true
 ---
 
 ## 何が問題なのか
 
 Headless Service は `selector` の有無により、自動的に対応する Endpoints を構成するかどうかの挙動が違うが、kustormize の commonLabels を使っていると `selector` が挿入されて意図しない挙動になることがある。
 
-つまり、自前で Endpoints を作って渡してあげたいのに、`selector` が挿入されることでその `selector` に基づいたセットで上書きされてしまう。
+つまり、[こういうパターン](https://zenn.dev/komazarari/articles/996e0c2067cb6c)のように自前で Endpoints を作って渡してあげたいのに、`selector` が挿入されることでその `selector` に基づいたセットで上書きされてしまう。
 
-https://github.com/kubernetes-sigs/kustomize/issues/249 など。
+
+https://github.com/kubernetes-sigs/kustomize/issues/249 などに問題として挙げられている
 
 ## 対応策
 
