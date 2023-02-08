@@ -3,7 +3,7 @@ title: "Lambda@Edge で TypeScript を使うための SAM テンプレート設�
 emoji: "👾"
 type: "tech" # tech: 技術記事 / idea: アイデア
 topics: ["Lambda", "Lambda@Edge", "TypeScript", "SAM", "AWS"]
-published: false
+published: true
 ---
 
 AWS SAM CLI は TypeScript を使ったテンプレートを出力できる。
