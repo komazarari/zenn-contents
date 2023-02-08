@@ -1,6 +1,6 @@
 ---
 title: "Lambda@Edge で TypeScript を使うための SAM テンプレート設定"
-emoji: "🦀"
+emoji: "👾"
 type: "tech" # tech: 技術記事 / idea: アイデア
 topics: ["Lambda", "Lambda@Edge", "TypeScript", "SAM", "AWS"]
 published: false
@@ -8,15 +8,19 @@ published: false
 
 AWS SAM CLI は TypeScript を使ったテンプレートを出力できる。
 
-用途に適したテンプレートがあらかじめ AWS に用意されているのだが、Lambda@Edge 用はいまのとこ (2023/02) 無いようなので、基本の Hello World Example TypeScript をもとに、Lambda@Edge で使うための差分について書いておく
+AWS からさまざまな用途向けにテンプレートが用意されているのだが、Lambda@Edge 用はいまのとこ (2023/02) 無いようなので、基本の Hello World Example TypeScript テンプレートをもとに、Lambda@Edge で使うための差分について書いておく
 
 ## 元にするテンプレートの生成
 
-SAM CLI v1.72.0、2023/02/08 時点で
+SAM CLI v1.72.0、2023/02/08 時点で、`sam init` 時の
 `Hello World Example` -> `runtime: node18.x` 
- で TypeScript 用のテンプレートが選択できることを確認しているが、テンプレートの更新でおいおいより適切なものが使えるようになるかもしれない。テンプレートのレポ https://github.com/aws/aws-sam-cli-app-templates/blob/master/manifest-v2.json も参考に。
+ で TypeScript 用のテンプレートが選択できることを確認している。
+
+今後テンプレートの更新でおいおいもっと適切なベースが出てくるかもしれない。AWS のテンプレートのレポ https://github.com/aws/aws-sam-cli-app-templates/blob/master/manifest-v2.json も参考に。
 
 
+
+sam init で、TypeScript 用テンプレートを生成する。
 ```bash
 sam init
 ...
@@ -28,7 +32,7 @@ Select your starter template
 Template: 2
 ...
 ```
-により、以下のようなディレクトリ構成になる。
+これにより、以下のようなファイルが生成される。
 
 ```bash
 ├── README.md
@@ -49,7 +53,7 @@ Template: 2
 
 ### template.yaml
 
-- `Hello World Example` は API Gateway とのセットのテンプレートなので、API Gateway 部分は削っておく( API Gw の付いてない `Standalone function` のテンプレートで TypeScript 用があればよかったのだが、現時点では無かった )
+- `Hello World Example` は API Gateway とのセットのテンプレートなので、API Gateway 部分は削っておく^[そもそも init 時の選択には `Hellow World Example` ではなく、API Gateway の付いてない `Standalone function` というのもあって用途としてはコッチが近いのだが、こちらは TypeScript 用が現時点で無かった )]
 - Lambda@Edge に使うには関数にバージョンを作成し、バージョン付きの ARN を指定する必要がある。`AutoPublishAlias` を有効にしておくと更新のたびにバージョンを作成してれて便利なので何らかの値を付けておく。以下では `LIVE` としているが何でもよい
 - Lambda 関数用 Role の信頼されたエンティティに `edgelambda.amazonaws.com` を追加する
 - `SourceMap` が有効だと Lambda 関数に `NODE_OPTIONS=–enable-source-maps` 環境変数が設定されるが、Lambda@Edge では環境変数が使えないので無効にしておく
@@ -158,3 +162,5 @@ Template: 2
 +    };
  };
 ```
+
+これでビルド、デプロイされた関数の ARN を CloudFront に紐付けて Lambda@Edge としてつかえるはず。
