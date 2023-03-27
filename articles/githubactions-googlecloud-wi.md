@@ -1,13 +1,14 @@
 ---
-title: "GitHub Actions OIDC でブランチや Environment ごとに Google Cloud の異なるロールを利用する"
+title: "GitHub Actions OIDC でブランチや Environment によって異なるロールを利用する (Google Cloud)"
 emoji: "🙌"
 type: "tech" # tech: 技術記事 / idea: アイデア
 topics: ["googlecloud", "GCP", "terraform", "githubactions", "OIDC"]
-published: false
+published: true
 ---
 
-# GitHub Actions OIDC でブランチや Environment ごとに Google Cloud の異なるロールを利用する
-GitHub Actions の OIDC を利用して workflow からキーレスで Google Cloud の権限を使う際の、Workload Identity プールやサービスアカウントの設定について説明します。この際に実行ブランチや Environment など、workflow の条件に応じて異なるサービスアカウントに接続するための設定を例示します。
+GitHub Actions OIDC と Google Cloud の Workload Identity を利用して、workflow から秘密鍵配置なしで Google Cloud にアクセスできます。
+
+このとき workflow の実行ブランチや Environment に応じて異なるロールを利用する方法を説明します。
 
 ## さいしょにまとめ
 
@@ -21,15 +22,17 @@ GitHub Actions の OIDC を利用して workflow からキーレスで Google Cl
 - Workload Identity プールの作成、認証条件の指定、トークンからの属性マッピング
 - サービスアカウントの作成、借用(impersonation)の許可と条件指定
 
-### 書かないこと
+### 詳しく書かないこと
 - GitHub Actions の設定
 - Terraform の使い方
 - サービスアカウントの権限設定
 
 ## やりかた
 ### Workload Identity プール の作成
-以下の Terraform コードは Workload Identity プール `github-pool` とプロバイダー `github-actions` を作成します。
-このプールにより、GitHub Actions によって提供される ID を Google Cloud の認証されたプリンシパル^["プリンシパル"とは雑に言えば権利を行使するモノやヒトたちです。こちら: https://cloud.google.com/iam/docs/overview#concepts_related_identity 参照] として扱えるようになります。
+外部 ID を Google Cloud で認識するための Workload Identity プールを作成します。
+
+
+以下の [Terraform コード](https://github.com/komazarari/example_githubactions_oidc/blob/main/googlecloud/workload_identity.tf)は Workload Identity プール `github-pool` とプロバイダー `github-actions` を作成します。このプールにより、GitHub Actions によって提供される ID を Google Cloud 側でプリンシパル^["プリンシパル"とは雑に言えば権利を行使するモノやヒトたちです。ロールを仮面や帽子に例えるなら、それをかぶる顔がプリンシパルと言えるかと思います。こちら: https://cloud.google.com/iam/docs/overview#concepts_related_identity 参照] として扱えるようになります。
 
 ```hcl
 resource "google_iam_workload_identity_pool" "github" {
@@ -68,10 +71,10 @@ resource "google_iam_workload_identity_pool_provider" "github_oidc" {
 
 作成されたプロバイダーは Web コンソールでは以下のように表示されます。
 
-![](https://storage.googleapis.com/zenn-user-upload/e00301868df6-20230327.png)
+![ScreenShot: Attribute Mapping and Attibute Conditions of the Workload Identity Provider](https://storage.googleapis.com/zenn-user-upload/e00301868df6-20230327.png)
 
 
-`assertion.*` の中身がわかるとイメージしやすいかもしれません。以下にトークンの一部形式を引用します。[GitHub Actions の OIDC トークンのドキュメント](https://docs.github.com/en/actions/deployment/security-hardening-your-deployments/about-security-hardening-with-openid-connect#understanding-the-oidc-token)も参照してください。
+`assertion.*` は GitHub から渡されるトークンに相当します。中身がわかるとよりイメージしやすいかもしれません。以下にトークンの一部形式を引用します。[GitHub Actions の OIDC トークンのドキュメント](https://docs.github.com/en/actions/deployment/security-hardening-your-deployments/about-security-hardening-with-openid-connect#understanding-the-oidc-token)も参照してください。
 ```
 {
   "jti": "example-id",
@@ -103,21 +106,26 @@ resource "google_iam_workload_identity_pool_provider" "github_oidc" {
 }
 ```
 
-プロバイダーの設定では属性条件 `attribute_condition` を指定することにより、認証範囲を特定のレポジトリに制限しています。ここでは `assertion.repository_owner` を使って GitHub の Organization/ユーザ 名を指定していますが、単一のレポジトリのみにしたり、複合条件にしてより細かく指定することも可能です。属性条件を指定しない場合は全 GitHub の Actions が対象になります。後述のサービスアカウント側の設定で権限借用の範囲を限定しておけば、だれでもどこからでも使われてしまうようなことにはなりませんが、多くの場合は制限しておくほうがよいでしょう。
+プロバイダーの設定では属性条件 `attribute_condition` を指定することにより、認証範囲を特定のレポジトリに制限しています。ここでは `assertion.repository_owner` を参照し特定の GitHub の Organization/ユーザ である場合に制限しています。単一のレポジトリのみにしたり、複合条件にしてより細かく指定することも可能です。
 
-`attribute_mapping` では、GitHub から渡される情報を Workload Identity プールの属性にマップします。
-これは後ほど権限借用の条件に使います。
+属性条件を指定しない場合はすべての GitHub Actions workflow が対象になります。後述のサービスアカウント側の設定で権限借用の範囲を限定しておけば、だれでもどこからでも使われてしまうようなことにはなりませんが、多くの場合はプール側でも制限しておくほうがよいでしょう。
 
+`attribute_mapping` では、GitHub から渡される情報を Workload Identity プールの属性にマップします。これは後ほど権限借用の条件に使います。
+
+
+以下の `attribute.org_repo_branch` 部分は少し他と毛色が違って複雑に見えるかもしれません。
 ```
 ... (再掲)
     "attribute.org_repo_branch"  = "assertion.repository + \"/\" + assertion.ref.extract('refs/heads/{branch}')"
 ...
 ```
-この `attribute.org_repo_branch` 部分のマッピングは少し奇妙に見えるかもしれませんので補足します。マッピングには Common Expression Language 式が使用できます ([属性のマッピング](https://cloud.google.com/iam/docs/workload-identity-federation?hl=ja#mapping)参照) 。トークンの `assertion.repository` に入ってくる `<org>/<repo>` の文字列と、`assertion.ref` にはいってくる `refs/heads/<branch>` から最後の `<branch>` 部分だけを extract 関数で抽出し、 `/` で結合して`<org>/<repo>/<branch>` の形式の文字列になるようにしています。
+マッピングは `assertion.*` の値を対応させるだけではなく、Common Expression Language 式が使用できます ([属性のマッピング](https://cloud.google.com/iam/docs/workload-identity-federation?hl=ja#mapping)参照) 。ここでは、`<org>/<repo>/<branch>` という形の属性を作りたかったので、`assertion.repository` に入ってくる `<org>/<repo>` の文字列と、`assertion.ref` にはいってくる `refs/heads/<branch>` から最後の `<branch>` 部分だけを CEL 関数の extract() で抽出し、 `/` で結合して目的の形にしています。
 
 
 ### サービスアカウントの作成
-以下の Terraform コードは 3 つのサービスアカウント `foo` `bar` `baz` (プレフィックス略) を作成し、Workload Identity プールで認証されたプリンシパルに対して権限借用の条件を設定します。
+Workload Identity から借用させるためサービスアカウントを作成します。
+
+以下の Terraform コードは 3 つのサービスアカウント `foo`、`bar`、`baz` (プレフィックス略) を作成し、Workload Identity プールで認証された特定のプリンシパルに対して権限借用を許可します。
 
 ```hcl
 // foo サービスアカウントを作成
@@ -170,29 +178,55 @@ resource "google_service_account_iam_binding" "github_actions_baz_wi_binding" {
 
 `"google_service_account_iam_binding"` ではサービスアカウントごとに [許可ポリシー](https://cloud.google.com/iam/docs/overview?hl=ja#cloud-iam-policy)を設定しています。このポリシーで許可されたプリンシパルのみが権限借用を行うことができます。
 
-Web コンソールではサービスアカウントの権限(PERMISSIONS)欄に表示されます。
-![](https://storage.googleapis.com/zenn-user-upload/1e8537d4014c-20230327.png)
+これは Web コンソールではサービスアカウントの権限(PERMISSIONS)欄に表示されます。
+![ScreenShot: Permitted principals of a ServiceAccount](https://storage.googleapis.com/zenn-user-upload/1e8537d4014c-20230327.png)
 
-上記の例では、それぞれ以下の意味になるよう許可ポリシーを設定しています。
+サービスアカウントそれぞれの設定について少し詳しく見ていきます。
 
-- `foo` : `<org名>/example_githubactions_oidc` というレポジトリの `main` ブランチで実行される workflow 相当の単一のプリンシパルを許可
-- `bar` : `<org名>/example_githubactions_oidc` というレポジトリの `develop` ブランチで実行される workflow 相当のプリンシパル集合を許可
-- `baz` : Actions の Environemnt `production` で実行される workflow 相当のプリンシパル集合を許可
+#### 例: `foo` サービスアカウント - ブランチ指定
 
-ここで指定しているプリンシパルは前述の Workload Identity プールから提供されるものなので、当然ながらプールの subject や 属性のマッピング設定によって文字列が変わってきます。指定方法については[サービスアカウントの権限借用](https://cloud.google.com/iam/docs/workload-identity-federation?hl=ja#impersonation)も参照してください。 
+`foo` の許可ポリシーはシンプルに単一プリンシパルを指定しています。変数を展開した具体例だと以下のような形です。
 
-もうすこし詳しく書くと
+```
+principal://iam.googleapis.com/projects/123456789012/locations/global/workloadIdentityPools/github-pool/subject/repo:komazarari/example_githubactions_oidc:ref:refs/heads/main
+```
+マッピングを踏まえると、これは `komazarari/example_githubactions_oidc` レポジトリの `main` ブランチから実行された workflow に対応します。
 
-- `foo` の指定はシンプルに subject が `repo:<org>/<repo>:ref:refs/heads/main` である単一のプリンシパルを許可しています。これはレポジトリの `main` ブランチから実行された workflow に対応しています
-  - ただし workflow が Environment を使っておらず、Pull request 起点でない場合に限ります。それぞれの場合でどのような文字列になるかは [subject claims 例](https://docs.github.com/en/actions/deployment/security-hardening-your-deployments/about-security-hardening-with-openid-connect#example-subject-claims) を参照してください。
-  - 単一のプリンシパルなので、`principalSet://` ではなく `principal://` です。
-- `bar` は、`<org>/<repo>/<branch>` という形になるよう整形した `attribute.org-repo-branch` を参照し、`<org>/<repo>/develop` を許可しています。これはレポジトリの `develop` ブランチから実行された workflow に対応しています。
-  - もちろん、`foo` の場合と同様に `principal://(略..):refs/head/develop` のように指定することでもほぼ同じ意味の指定ができます。
-- `baz` は、`attribute.environment` を参照しています。これは Environment `production` で実行された workflow に対応します。
-  - この指定にはレポジトリやオーナーの情報が含まれていないことに注意してください。`attribute.environment` が `production` であるプリンシパル全てが許可されます。プールの属性条件で Organization 名を制限しているため、結果的に `<org>` 以下のレポジトリから Environment `production` で実行される全ての workflow に対応します。
-  - 一部繰り返しになりますが、仮にプールの属性条件が指定されていないと、このプリンシパル集合は GitHub のあらゆるレポジトリから Environment `production` で実行される全 workflow に対応することに (実質全世界のだれでも借用可能に) なります。
+ただし、workflow が Environment を使っておらず、Pull request 起点でない場合に限ります。このような場合の subject 文字列は [subject claims 例](https://docs.github.com/en/actions/deployment/security-hardening-your-deployments/about-security-hardening-with-openid-connect#example-subject-claims) を参照してください。
 
-## Workflow での権限借用
+
+`principal://～～/subject/repo:<org>/<repo>:ref:refs/heads/main` である単一のプリンシパルを許可しています。これはレポジトリの `main` ブランチから実行された workflow に対応しています
+
+他の `bar`、`baz` と違って単一プリンシパルなので、`principalSet://~` ではなく `principal://~` です。
+
+#### 例: `bar` サービスアカウント - 別の方法でブランチ指定
+`bar` の許可ポリシーはマッピングのところで定義した `org_repo_branch` 属性を参照しています。具体例だと以下のような形です。
+
+```
+principalSet://iam.googleapis.com/projects/123456789012/locations/global/workloadIdentityPools/github-pool/attribute.org_repo_branch/komazarari/example_githubactions_oidc/develop
+```
+
+`org_repo_branch` 属性の値にあたるのが `komazarari/example_githubactions_oidc/develop` 部分です。結果として、これは `komazarari/example_githubactions_oidc` レポジトリの `develop` ブランチから実行された workflow に対応します。
+
+`foo` と比較すると、こちらの指定の場合は Environment の使用有無や Pull request 起点かで条件が変わりません。
+
+この属性を持つプリンシパルの集合という意味になるので、`principalSet://～` で記述します。
+
+同じことを実現するために必ずしも属性を参照しなければいけないということではありません。例えば、`google.subject` へのマップを `assertion` の `repo` と `ref` を組み合わせた文字列も使っても近いことができます。そうした場合、Google Cloud 側としては単一のプリンシパルになるので `principal://~/subject/~` のような形になります。
+
+
+#### 例: `baz` サービスアカウント - Environment 指定
+`baz` の許可ポリシーは `environment` 属性を参照しています。具体例だと以下のような形です。
+
+```
+principalSet://iam.googleapis.com/projects/123456789012/locations/global/workloadIdentityPools/github-pool/attribute.environment/production
+```
+
+この指定にはレポジトリやオーナーの情報が含まれていないことに注意してください。`attribute.environment` が `production` であるプリンシパル全てが許可されます。本記事の設定ではプールの属性条件で Organization 名を制限しているため、結果的に `<org>` 以下のレポジトリから Environment `production` で実行される全ての workflow が対応します。
+
+一部繰り返しになりますが、仮にプールの属性条件が指定されていないと、このプリンシパル集合は GitHub のあらゆるレポジトリから Environment `production` で実行される workflow に対応することに (実質全世界のだれでも借用可能に) なります。
+
+### Workflow での権限借用
 
 詳しくは言及しませんが、https://github.com/google-github-actions/auth を利用できます。
 
