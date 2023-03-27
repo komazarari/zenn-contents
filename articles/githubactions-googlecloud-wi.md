@@ -194,9 +194,6 @@ principal://iam.googleapis.com/projects/123456789012/locations/global/workloadId
 
 ただし、workflow が Environment を使っておらず、Pull request 起点でない場合に限ります。このような場合の subject 文字列は [subject claims 例](https://docs.github.com/en/actions/deployment/security-hardening-your-deployments/about-security-hardening-with-openid-connect#example-subject-claims) を参照してください。
 
-
-`principal://～～/subject/repo:<org>/<repo>:ref:refs/heads/main` である単一のプリンシパルを許可しています。これはレポジトリの `main` ブランチから実行された workflow に対応しています
-
 他の `bar`、`baz` と違って単一プリンシパルなので、`principalSet://~` ではなく `principal://~` です。
 
 #### 例: `bar` サービスアカウント - 別の方法でブランチ指定
@@ -212,7 +209,7 @@ principalSet://iam.googleapis.com/projects/123456789012/locations/global/workloa
 
 この属性を持つプリンシパルの集合という意味になるので、`principalSet://～` で記述します。
 
-同じことを実現するために必ずしも属性を参照しなければいけないということではありません。例えば、`google.subject` へのマップを `assertion` の `repo` と `ref` を組み合わせた文字列も使っても近いことができます。そうした場合、Google Cloud 側としては単一のプリンシパルになるので `principal://~/subject/~` のような形になります。
+同じことを実現するために必ずしも属性を参照しなければいけないということではありません。例えば、`google.subject` へのマップを `assertion` の `repo` と `ref` を組み合わせた文字列を使うことでも近いことができます。その場合は単一のプリンシパルになるので `principal://~/subject/~` のような形になります。
 
 
 #### 例: `baz` サービスアカウント - Environment 指定
