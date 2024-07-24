@@ -7,7 +7,9 @@ published: false
 ---
 
 AWS ALB には認証機能があり、バックのターゲットへリクエストを流す前に認証を行うようルールを構成することができます。ここでは Microsoft Entra ID (旧 Azure AD) と連携して SAML 認証を行う設定について説明します。
-
+:::message
+記事内で作成した各種クラウドリソースは全て削除済みです
+:::
 
 ## 構成
 
@@ -57,16 +59,17 @@ aws cognito-idp create-user-pool-domain \
   --user-pool-id <yourUserPoolID>
 ```
 
-以下のように実行したものとします。もしドメインが既に使われていてエラーになる場合は適宜変更してください。
+ここでは以下のように実行したものとします。もしドメインが既に使われていてエラーになる場合は適宜変更してください。
 ```bash
 aws cognito-idp create-user-pool-domain \
-  --domain komazarari-zenn-auth-test \
-  --user-pool-id ap-northeast-1_3dmYPi9Cn
+  --domain my-cognito-auth-test \
+  --user-pool-id ap-northeast-1_3dmYPi9Cn \
+  --region ap-northeast-1
 ```
 
 このとき生成されるドメインは次のようになります。これも控えておきます。
 ```
-https://komazarari-zenn-auth-test.auth.ap-northeast-1.amazoncognito.com
+https://my-cognito-auth-test.auth.ap-northeast-1.amazoncognito.com
 ```
 
 なお、Web UI からドメイン作成を行う場合は、`Amazon Cognito > ユーザープール > [対象のユーザープール]` 内にあるタブの `アプリケーションの統合` から作成できます。
@@ -98,7 +101,7 @@ urn:amazon:cognito:sp:ap-northeast-1_3dmYPi9Cn
 
 応答 URL には、Cognito の `https://<ホステッド UI のドメイン>/saml2/idpresponse` を入力します。例えば、先ほど作成したドメインの例であれば以下です。
 ```
-https://komazarari-zenn-auth-test.auth.ap-northeast-1.amazoncognito.com/saml2/idpresponse
+https://my-cognito-auth-test.auth.ap-northeast-1.amazoncognito.com/saml2/idpresponse
 ```
 
 ![SAML設定](/images/aws-alb-auth-with-saml_saml-settings.png)
@@ -190,10 +193,10 @@ ALB のルールアクションで、認証に Cognito を使うよう設定し�
 ### 動作確認
 準備ができたら、プライベートブラウジングで開発ツールを開きながら ALB にアクセスしてみます。うまく行っていれば概ね以下のような流れでリクエストが流れるはずです。
 - ALB `https://my-alb-domain.example.com/` にアクセス
-- Cognito のログイン画面 `https://komazarari-zenn-auth-test.auth.ap-northeast-1.amazoncognito.com/` にリダイレクト
+- Cognito のログイン画面 `https://my-cognito-auth-test.auth.ap-northeast-1.amazoncognito.com/` にリダイレクト
 - Entra ID のログイン画面 `https://login.microsoftonline.com` にリダイレクト
 - Microsoft アカウントのログイン処理が続く
-- Cognito の応答 URL `https://komazarari-zenn-auth-test.auth.ap-northeast-1.amazoncognito.com/saml2/idpresponse` 戻ってくる
+- Cognito の応答 URL `https://my-cognito-auth-test.auth.ap-northeast-1.amazoncognito.com/saml2/idpresponse` に戻ってくる
 - ALB のコールバック URL `https://my-alb-domain.example.com/oauth2/idpresponse` にリダイレクト
 - 元の URL `https://my-alb-domain.example.com/` にリダイレクト
 - Lambda で用意したコンテンツが表示される
