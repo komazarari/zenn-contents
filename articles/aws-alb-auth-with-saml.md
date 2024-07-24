@@ -3,7 +3,7 @@ title: "AWS ALB と Entra ID (旧 Azure AD) を SAML 認証で連携する"
 emoji: "🤖"
 type: "tech" # tech: 技術記事 / idea: アイデア
 topics: ["AWS", "ALB", "SAML", "entraid", "azuread"]
-published: false
+published: true
 ---
 
 AWS ALB には認証機能があり、バックのターゲットへリクエストを流す前に認証を行うようルールを構成することができます。ここでは Microsoft Entra ID (旧 Azure AD) と連携して SAML 認証を行う設定について説明します。
